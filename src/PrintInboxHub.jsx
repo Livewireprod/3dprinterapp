@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const SHEETS_ENDPOINT =
-  "https://script.google.com/macros/s/AKfycbwdRHaAIBTC7q0olATYdoGb6BBZuO3OUrBaCvu6V2AJuZvpMsq1PFkvUUy9wMNscL-EMA/exec";
+const SHEETS_ENDPOINT = "https://cors-proxy.alfieharriswork.workers.dev/"; // <- Cloudflare Worker URL
 
 const priorities = ["Low", "Normal", "High", "Urgent"];
 const statuses = ["New", "In Progress", "Done", "Archived"];
@@ -27,7 +26,7 @@ const sortOptions = [
   { value: "priority", label: "Priority" },
 ];
 
-const STORAGE_KEY = "print-inbox-requests-v2";
+const STORAGE_KEY = "print-inbox-cache-v4";
 
 const uuid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -52,34 +51,24 @@ function useToasts() {
   return { toasts, push, remove };
 }
 
-// Reliable send from static hosting → Apps Script
-async function postToSheet(payload) {
-  if (!SHEETS_ENDPOINT) return { sent: false, reason: "no-endpoint" };
-  const bodyText = JSON.stringify(payload);
+const priorityRank = { Low: 0, Normal: 1, High: 2, Urgent: 3 };
 
-  // Prefer sendBeacon
-  try {
-    if (navigator.sendBeacon) {
-      const blob = new Blob([bodyText], { type: "text/plain;charset=UTF-8" });
-      const ok = navigator.sendBeacon(SHEETS_ENDPOINT, blob);
-      return { sent: ok, reason: ok ? "beacon" : "beacon-failed" };
+function sortRequests(reqs, sort) {
+  const copy = [...reqs];
+  copy.sort((a, b) => {
+    if (sort === "oldest") return new Date(a.createdAt) - new Date(b.createdAt);
+
+    if (sort === "due") {
+      const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+      const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+      return ad - bd;
     }
-  } catch {
-    // fall through
-  }
 
-  // Fallback: simple POST no-cors (no custom headers)
-  try {
-    await fetch(SHEETS_ENDPOINT, {
-      method: "POST",
-      mode: "no-cors",
-      body: bodyText,
-      keepalive: true,
-    });
-    return { sent: true, reason: "fetch-no-cors" };
-  } catch (e) {
-    return { sent: false, reason: "fetch-failed", error: e };
-  }
+    if (sort === "priority") return priorityRank[b.priority] - priorityRank[a.priority];
+
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+  return copy;
 }
 
 function triageBuckets(reqs) {
@@ -107,30 +96,42 @@ function triageBuckets(reqs) {
   return { overdue, dueToday };
 }
 
-const priorityRank = { Low: 0, Normal: 1, High: 2, Urgent: 3 };
+// --- UI building blocks outside main (prevents mobile keyboard collapse) ---
+function ConfirmModal({ open, title, message, dangerLabel, onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-5">
+        <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+        <p className="mt-2 text-sm text-slate-600">{message}</p>
 
-function sortRequests(reqs, sort) {
-  const copy = [...reqs];
-  copy.sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (b.pinned && !a.pinned) return 1;
-
-    if (sort === "oldest") return new Date(a.createdAt) - new Date(b.createdAt);
-
-    if (sort === "due") {
-      const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
-      const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-      return ad - bd;
-    }
-
-    if (sort === "priority") return priorityRank[b.priority] - priorityRank[a.priority];
-
-    return new Date(b.createdAt) - new Date(a.createdAt);
-  });
-  return copy;
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-2 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 active:scale-95"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-sm hover:bg-rose-100 active:scale-95"
+          >
+            {dangerLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DetailDrawer({ selected, onClose, updateRequest, onCopySummary, onDelete }) {
+  const [notesDraft, setNotesDraft] = useState("");
+
+  useEffect(() => {
+    setNotesDraft(selected?.devNotes || "");
+  }, [selected?.id]); // reset when selecting another card
+
   if (!selected) return null;
 
   return (
@@ -178,38 +179,31 @@ function DetailDrawer({ selected, onClose, updateRequest, onCopySummary, onDelet
           <label className="text-sm text-slate-600 block">
             Developer Notes
             <textarea
-              value={selected.devNotes || ""}
-              onChange={(e) => updateRequest(selected.id, { devNotes: e.target.value })}
+              value={notesDraft}
+              onChange={(e) => setNotesDraft(e.target.value)}
+              onBlur={() => {
+                if ((selected.devNotes || "") !== notesDraft) {
+                  updateRequest(selected.id, { devNotes: notesDraft });
+                }
+              }}
               rows={4}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
-              placeholder="Notes"
+              placeholder="What to watch out for, materials, constraints..."
             />
+            <p className="mt-1 text-xs text-slate-500">Saves when you click away.</p>
           </label>
 
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={!!selected.pinned}
-                  onChange={(e) => updateRequest(selected.id, { pinned: e.target.checked })}
-                  className="accent-indigo-600"
-                />
-                Pin to top
-              </label>
-
-              <button
-                onClick={() => onCopySummary(selected)}
-                className="px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-500 active:scale-95"
-              >
-                Copy summary
-              </button>
-            </div>
+            <button
+              onClick={() => onCopySummary(selected)}
+              className="px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-500 active:scale-95"
+            >
+              Copy summary
+            </button>
 
             <button
               onClick={() => onDelete(selected)}
               className="px-3 py-2 rounded-md border border-rose-200 bg-rose-50 text-rose-700 text-sm hover:bg-rose-100 active:scale-95"
-              title="Delete from UI and Google Sheet"
             >
               Delete
             </button>
@@ -242,7 +236,6 @@ function FormCard({
     >
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-slate-900">New Request</h3>
-        
       </div>
 
       <label className="block text-sm text-slate-700">
@@ -264,7 +257,7 @@ function FormCard({
           required
           rows={3}
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
-          placeholder="What needs to be printed?"
+          placeholder="What needs to be printed? Materials? Dimensions?"
         />
       </label>
 
@@ -301,9 +294,7 @@ function FormCard({
         {loading ? "Submitting..." : "Submit request"}
       </button>
 
-      <p className="text-xs text-slate-500">
-        Required: Name and Description.
-      </p>
+      <p className="text-xs text-slate-500">Required: Name and Description.</p>
     </form>
   );
 }
@@ -323,6 +314,10 @@ export default function PrintInboxHub() {
   const [loadingSubmit, setLoadingSubmit] = useState(false);
   const [loadingRefresh, setLoadingRefresh] = useState(false);
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formDue, setFormDue] = useState("");
@@ -330,6 +325,7 @@ export default function PrintInboxHub() {
 
   const { toasts, push, remove } = useToasts();
 
+  // Local cache as fallback
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -369,24 +365,73 @@ export default function PrintInboxHub() {
   const { overdue, dueToday } = useMemo(() => triageBuckets(requests), [requests]);
 
   async function refreshFromSheet() {
-    if (!SHEETS_ENDPOINT) return;
     setLoadingRefresh(true);
     try {
       const res = await fetch(`${SHEETS_ENDPOINT}?method=GET`);
       const data = await res.json();
       if (!data?.rows || !Array.isArray(data.rows)) throw new Error("Bad response");
-      setRequests(data.rows.map((r) => ({ ...r, synced: true })));
+
+      // Ensure defaults exist even if older rows are missing fields
+      setRequests(
+        data.rows.map((r) => ({
+          ...r,
+          priority: r.priority || "Normal",
+          status: r.status || "New",
+          devNotes: r.devNotes || "",
+        }))
+      );
+
       push("Inbox refreshed", "success");
-    } catch {
-      push("Refresh failed (possible CORS).", "error");
+    } catch (e) {
+      push("Refresh failed", "error");
     } finally {
       setLoadingRefresh(false);
     }
   }
 
-  function updateRequest(id, changes) {
+  async function postToSheet(payload) {
+    const res = await fetch(SHEETS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { ok: res.ok, raw: text };
+    }
+  }
+
+  // local-only update (optimistic UI)
+  function updateLocal(id, changes) {
     setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, ...changes } : r)));
     setSelected((prev) => (prev && prev.id === id ? { ...prev, ...changes } : prev));
+  }
+
+  // update + persist to sheet (only priority/status/devNotes are sent)
+  async function updateRequest(id, changes) {
+    updateLocal(id, changes);
+
+    const fields = {};
+    if ("priority" in changes) fields.priority = changes.priority;
+    if ("status" in changes) fields.status = changes.status;
+    if ("devNotes" in changes) fields.devNotes = changes.devNotes;
+
+    // If nothing relevant changed, don't hit the API
+    if (Object.keys(fields).length === 0) return;
+
+    try {
+      const resp = await postToSheet({ action: "update", id, fields });
+      if (!resp?.ok) {
+        push("Update failed (sheet)", "error");
+        // Re-sync so UI reflects source of truth
+        await refreshFromSheet();
+      }
+    } catch {
+      push("Update failed (network)", "error");
+      await refreshFromSheet();
+    }
   }
 
   async function onSubmit(e) {
@@ -405,47 +450,55 @@ export default function PrintInboxHub() {
       priority: formPriority,
       status: "New",
       devNotes: "",
-      pinned: false,
-      synced: false,
     };
 
+    // optimistic add
     setRequests((prev) => [newReq, ...prev]);
-
     setFormDesc("");
     setFormDue("");
     push("Request added", "success");
 
-    const result = await postToSheet(newReq);
-    setRequests((prev) =>
-      prev.map((r) => (r.id === newReq.id ? { ...r, synced: !!result.sent } : r))
-    );
-    if (!result.sent) push("Could not send to sheet. Retry available.", "error");
-
-    setLoadingSubmit(false);
-    setFormOpenMobile(false);
+    try {
+      const resp = await postToSheet(newReq);
+      if (!resp?.ok) push("Sheet write failed", "error");
+      // optional: resync to ensure exact sheet state
+      await refreshFromSheet();
+    } catch {
+      push("Sheet write failed", "error");
+      await refreshFromSheet();
+    } finally {
+      setLoadingSubmit(false);
+      setFormOpenMobile(false);
+    }
   }
 
-  async function retrySync(req) {
-    const result = await postToSheet(req);
-    setRequests((prev) =>
-      prev.map((r) => (r.id === req.id ? { ...r, synced: !!result.sent } : r))
-    );
-    push(result.sent ? "Sent to sheet" : "Retry failed", result.sent ? "success" : "error");
+  function requestDelete(req) {
+    setConfirmTarget(req);
+    setConfirmOpen(true);
   }
 
-  async function deleteRequest(req) {
-    const ok = window.confirm(`Delete "${req.name}"? This will remove it from the sheet too.`);
-    if (!ok) return;
+  async function confirmDelete() {
+    const req = confirmTarget;
+    if (!req) return;
 
-    // Optimistic UI remove
+    setDeleting(true);
+    setConfirmOpen(false);
+
+    // Optimistic remove in UI
     setRequests((prev) => prev.filter((r) => r.id !== req.id));
     setSelected((s) => (s?.id === req.id ? null : s));
     push("Deleted", "success");
 
-    // Send delete command to Apps Script
-    const result = await postToSheet({ action: "delete", id: req.id });
-    if (!result.sent) {
-      push("Delete may not have reached the sheet (check sheet).", "error");
+    try {
+      const resp = await postToSheet({ action: "delete", id: req.id });
+      if (!resp?.ok) push("Delete may not have reached the sheet", "error");
+      await refreshFromSheet();
+    } catch (e) {
+      push("Delete failed", "error");
+      await refreshFromSheet();
+    } finally {
+      setDeleting(false);
+      setConfirmTarget(null);
     }
   }
 
@@ -474,6 +527,8 @@ export default function PrintInboxHub() {
       { label: "Archive", show: req.status !== "Archived", next: "Archived" },
     ];
 
+    const isDone = req.status === "Done";
+
     return (
       <div
         key={req.id}
@@ -485,7 +540,9 @@ export default function PrintInboxHub() {
             setSelected(req);
           }
         }}
-        className="group rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md focus:ring-2 focus:ring-indigo-200 transition cursor-pointer"
+        className={`group rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md focus:ring-2 focus:ring-indigo-200 transition cursor-pointer ${
+          isDone ? "opacity-80" : ""
+        }`}
       >
         <div className="flex items-start gap-3 p-3 md:p-4">
           <span
@@ -498,8 +555,9 @@ export default function PrintInboxHub() {
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="font-semibold text-slate-800 truncate">{req.name}</p>
-              {req.pinned && <span className="text-amber-500 text-xs font-semibold">Pinned</span>}
+              <p className={`font-semibold text-slate-800 truncate ${isDone ? "line-through" : ""}`}>
+                {req.name}
+              </p>
             </div>
 
             <p className="text-sm text-slate-600 line-clamp-2">{req.description}</p>
@@ -513,12 +571,6 @@ export default function PrintInboxHub() {
               <span className={`px-2 py-1 rounded-full border ${statusStyles[req.status] || ""}`}>
                 {req.status}
               </span>
-
-              {!req.synced && SHEETS_ENDPOINT && (
-                <span className="text-amber-600 bg-amber-50 border border-amber-100 px-2 py-1 rounded-full">
-                  Not synced
-                </span>
-              )}
             </div>
           </div>
 
@@ -538,27 +590,16 @@ export default function PrintInboxHub() {
                 </button>
               ))}
 
-            {!req.synced && SHEETS_ENDPOINT && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  retrySync(req);
-                }}
-                className="text-[11px] text-indigo-600 underline mt-1"
-              >
-                Retry
-              </button>
-            )}
-
             <button
+              disabled={deleting}
               onClick={(e) => {
                 e.stopPropagation();
-                deleteRequest(req);
+                requestDelete(req);
               }}
-              className="text-xs px-2 py-1 rounded-md border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-95 mt-1"
+              className="text-xs px-2 py-1 rounded-md border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-95 mt-1 disabled:opacity-60"
               title="Delete from UI and Google Sheet"
             >
-              Delete (don't use yet pls)
+              Delete
             </button>
           </div>
         </div>
@@ -618,7 +659,7 @@ export default function PrintInboxHub() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 text-slate-900">
       <header className="sticky top-0 z-20 backdrop-blur border-b border-slate-200 bg-white/80">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold">LIVEWIRE Print Hub </h1>
+          <h1 className="text-xl font-semibold">3D Print Inbox</h1>
 
           <div className="flex items-center gap-2">
             <button
@@ -723,7 +764,7 @@ export default function PrintInboxHub() {
         onClose={() => setSelected(null)}
         updateRequest={updateRequest}
         onCopySummary={onCopySummary}
-        onDelete={deleteRequest}
+        onDelete={requestDelete}
       />
 
       {formOpenMobile && (
@@ -759,6 +800,22 @@ export default function PrintInboxHub() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Delete request?"
+        message={
+          confirmTarget
+            ? `This will permanently delete “${confirmTarget.name}” from the inbox and the Google Sheet.`
+            : "This will permanently delete this request from the inbox and the Google Sheet."
+        }
+        dangerLabel="Delete"
+        onCancel={() => {
+          setConfirmOpen(false);
+          setConfirmTarget(null);
+        }}
+        onConfirm={confirmDelete}
+      />
 
       <div className="fixed bottom-4 right-4 space-y-2 z-50">
         {toasts.map((t) => (
