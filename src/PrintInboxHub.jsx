@@ -182,7 +182,7 @@ function DetailDrawer({ selected, onClose, updateRequest, onCopySummary, onDelet
               onChange={(e) => updateRequest(selected.id, { devNotes: e.target.value })}
               rows={4}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
-              placeholder="What to watch out for, materials, constraints..."
+              placeholder="Notes"
             />
           </label>
 
@@ -264,7 +264,7 @@ function FormCard({
           required
           rows={3}
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
-          placeholder="What needs to be printed? Materials? Dimensions?"
+          placeholder="What needs to be printed?"
         />
       </label>
 
@@ -618,7 +618,7 @@ export default function PrintInboxHub() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 text-slate-900">
       <header className="sticky top-0 z-20 backdrop-blur border-b border-slate-200 bg-white/80">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold">3D Print Inbox</h1>
+          <h1 className="text-xl font-semibold">LIVEWIRE Print Hub </h1>
 
           <div className="flex items-center gap-2">
             <button
