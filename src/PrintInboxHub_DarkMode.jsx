@@ -27,8 +27,8 @@ const sortOptions = [
 ];
 
 const STORAGE_KEY = "print-inbox-cache-v4";
-
 const THEME_KEY = "print-inbox-theme";
+const ITEM_CACHE_KEY = "print-inbox-items-v1"
 
 function useTheme() {
   const [theme, setTheme] = useState("light");
@@ -49,11 +49,11 @@ function useTheme() {
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 
-  return { theme, toggleTheme: () =>
-    setTheme((t) => (t === "dark" ? "light" : "dark"))
+  return {
+    theme,
+    toggleTheme: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
   };
 }
-
 
 const uuid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -129,14 +129,14 @@ function ConfirmModal({ open, title, message, dangerLabel, onConfirm, onCancel }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-5">
-        <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-        <p className="mt-2 text-sm text-slate-600">{message}</p>
+      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-5 dark:bg-slate-950 dark:border-slate-800">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{message}</p>
 
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             onClick={onCancel}
-            className="px-3 py-2 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 active:scale-95"
+            className="px-3 py-2 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 active:scale-95 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-900"
           >
             Cancel
           </button>
@@ -163,25 +163,40 @@ function DetailDrawer({ selected, onClose, updateRequest, onCopySummary, onDelet
 
   return (
     <div className="fixed inset-0 z-30 flex md:items-start">
-      <div className="flex-1 bg-slate-900/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="w-full md:max-w-xl h-full bg-white shadow-2xl rounded-t-2xl md:rounded-none md:rounded-l-2xl p-4 md:p-6 overflow-y-auto">
+      <div className="flex-1 bg-slate-900/30 backdrop-blur-sm " onClick={onClose} />
+      <div className="w-full md:max-w-xl h-full bg-white shadow-2xl rounded-t-2xl md:rounded-none md:rounded-l-2xl p-4 md:p-6 overflow-y-auto dark:bg-slate-950 dark:border-slate-800">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-slate-900">{selected.name}</h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-800">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selected.name}</h3>
+          <button
+            onClick={onClose}
+            className="text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white"
+          >
             Close
           </button>
         </div>
 
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 whitespace-pre-line">{selected.description}</p>
+    <div className="flex flex-col gap-1">
+  <span
+  className={`text-xs px-2 py-1 rounded-full font-semibold ${
+    statusStyles[selected.status] || statusStyles.New
+  }`}
+>
+  {selected.status}
+</span>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm text-slate-600">
+  <p className="text-sm text-slate-600 dark:text-slate-300">
+    {selected.item || "-"}
+  </p>
+
+
+
+          <div className="grid grid-cols-3 gap-3">
+            <label className="text-sm text-slate-600 dark:text-slate-300">
               Status
               <select
                 value={selected.status}
                 onChange={(e) => updateRequest(selected.id, { status: e.target.value })}
-                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
               >
                 {statuses.map((s) => (
                   <option key={s}>{s}</option>
@@ -189,22 +204,40 @@ function DetailDrawer({ selected, onClose, updateRequest, onCopySummary, onDelet
               </select>
             </label>
 
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-slate-600 dark:text-slate-300">
               Priority
               <select
                 value={selected.priority}
                 onChange={(e) => updateRequest(selected.id, { priority: e.target.value })}
-                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
               >
                 {priorities.map((p) => (
                   <option key={p}>{p}</option>
                 ))}
               </select>
             </label>
+
+            <label className="text-sm text-slate-600 dark:text-slate-300">
+              Quantity
+             <input
+                type="number"
+                min={1}
+                step={1}
+                value={selected.quantity || 1}
+                onChange={(e) => {
+              const value = Number(e.target.value);
+                updateRequest(selected.id, {
+                quantity: Number.isNaN(value) || value < 1 ? 1 : value,
+                });
+                  }}
+                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-20 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
+              />
+           </label>
+
           </div>
 
-          <label className="text-sm text-slate-600 block">
-            Developer Notes
+          <label className="text-sm text-slate-600 dark:text-slate-300 block">
+            Notes
             <textarea
               value={notesDraft}
               onChange={(e) => setNotesDraft(e.target.value)}
@@ -214,10 +247,10 @@ function DetailDrawer({ selected, onClose, updateRequest, onCopySummary, onDelet
                 }
               }}
               rows={4}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 dark:placeholder:text-slate-400"
               placeholder="What to watch out for, materials, constraints..."
             />
-            <p className="mt-1 text-xs text-slate-500">Saves when you click away.</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Saves when you click away.</p>
           </label>
 
           <div className="flex items-center justify-between gap-3">
@@ -245,71 +278,140 @@ function FormCard({
   compact,
   name,
   setName,
-  desc,
-  setDesc,
+  item,
+  setItem,
+  items,
+  loadingItems,
+  addItemOpen,
+  setAddItemOpen,
+  newItemName,
+  setNewItemName,
+  addingItem,
+  handleAddItem,
   due,
   setDue,
   priority,
   setPriority,
+  quantity,
+  setQuantity,
   onSubmit,
   loading,
 }) {
   return (
     <form
       onSubmit={onSubmit}
-      className={`bg-white/80 backdrop-blur border border-slate-200 rounded-2xl shadow-sm ${
+      className={`bg-white/80 backdrop-blur border border-slate-200 rounded-2xl shadow-sm dark:bg-slate-900/60 dark:border-slate-800 ${
         compact ? "p-4" : "p-5"
       } space-y-3`}
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-900">New Request</h3>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">New Request</h3>
       </div>
 
-      <label className="block text-sm text-slate-700">
+      <label className="block text-sm text-slate-700 dark:text-slate-300">
         Name*
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 dark:placeholder:text-slate-400"
           placeholder="Requester name"
         />
       </label>
 
-      <label className="block text-sm text-slate-700">
-        Description*
-        <textarea
-          value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-          required
-          rows={3}
-          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
-          placeholder="What needs to be printed? Materials? Dimensions?"
-        />
-      </label>
+      <label className="block text-sm text-slate-700 dark:text-slate-300">
+  Item*
+  <div className="mt-1 flex gap-2">
+    <select
+      value={item}
+      onChange={(e) => setItem(e.target.value)}
+      required
+      className="w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
+    >
+      <option value="" disabled>
+        {loadingItems ? "Loading items..." : "Select an item"}
+      </option>
+      {items.map((it) => (
+        <option key={it.id ?? it.name} value={it.name}>
+          {it.name}
+        </option>
+      ))}
+    </select>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block text-sm text-slate-700">
+    <button
+      type="button"
+      onClick={() => setAddItemOpen(true)}
+      className="px-3 py-2 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 active:scale-95 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-900"
+    >
+      Add item
+    </button>
+  </div>
+</label>
+
+{addItemOpen && (
+  <div className="mt-2 flex gap-2">
+    <input
+      value={newItemName}
+      onChange={(e) => setNewItemName(e.target.value)}
+      placeholder="New item name"
+      className="w-full rounded-lg border border-slate-200 px-3 py-2 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
+    />
+    <button
+      type="button"
+      disabled={addingItem}
+      onClick={handleAddItem}
+      className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-500 disabled:opacity-60"
+    >
+      {addingItem ? "Adding..." : "Save"}
+    </button>
+    <button
+      type="button"
+      onClick={() => { setAddItemOpen(false); setNewItemName(""); }}
+      className="px-3 py-2 rounded-lg border border-slate-200 text-sm dark:border-slate-800 dark:text-slate-200"
+    >
+      Cancel
+    </button>
+  </div>
+)}
+
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label className="block text-sm text-slate-700 dark:text-slate-300">
           Due date
           <input
             type="date"
             value={due}
             onChange={(e) => setDue(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
           />
         </label>
 
-        <label className="block text-sm text-slate-700">
+        <label className="block text-sm text-slate-700 dark:text-slate-300">
           Priority
           <select
             value={priority}
             onChange={(e) => setPriority(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
           >
             {priorities.map((p) => (
               <option key={p}>{p}</option>
             ))}
           </select>
+        </label>
+
+        <label className="block text-sm text-slate-700 dark:text-slate-300">
+          Quantity*
+          <input
+          type = "number"
+          min= {1}
+          value = {quantity}
+          onChange={(e) => {
+           const value = Number(e.target.value);
+           setQuantity(Number.isNaN(value) || value < 1 ? 1 : value);
+           }}
+
+          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focusLrind-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
+          /> 
         </label>
       </div>
 
@@ -321,7 +423,7 @@ function FormCard({
         {loading ? "Submitting..." : "Submit request"}
       </button>
 
-      <p className="text-xs text-slate-500">Required: Name and Description.</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">Required: Name and Item.</p>
     </form>
   );
 }
@@ -346,13 +448,50 @@ export default function PrintInboxHub() {
   const [deleting, setDeleting] = useState(false);
 
   const [formName, setFormName] = useState("");
-  const [formDesc, setFormDesc] = useState("");
   const [formDue, setFormDue] = useState("");
   const [formPriority, setFormPriority] = useState("Normal");
-  
-  const { theme, toggleTheme} = useTheme();
+  const [formQuantity, setFormQuantity] = useState(1);
+
+  const { theme, toggleTheme } = useTheme();
   const { toasts, push, remove } = useToasts();
 
+  const [items, setItems] = useState([]);
+  const [loadingItems, setLoadingItems] = useState(false);
+
+  const [formItem, setFormItem] = useState("");
+
+  const [addItemOpen, setAddItemOpen] = useState(false);
+  const [newItemName, setNewItemName] = useState(""); 
+  const [addingItem, setAddingItem] = useState(false);
+
+
+  useEffect(() => {
+  // local cache first (fast)
+  try {
+    const saved = localStorage.getItem(ITEMS_CACHE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) setItems(parsed);
+    }
+  } catch {}
+
+  // then fetch from sheet (source of truth)
+  (async () => {
+    setLoadingItems(true);
+    try {
+      const resp = await postToSheet({ action: "getItems" });
+      if (resp?.ok && Array.isArray(resp.items)) {
+        setItems(resp.items);
+        localStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify(resp.items));
+      }
+    } catch {
+      push("Failed to load items", "error");
+    } finally {
+      setLoadingItems(false);
+    }
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [hydrated]);
 
   // Local cache as fallback
   useEffect(() => {
@@ -392,6 +531,33 @@ export default function PrintInboxHub() {
   }, [requests, search, statusFilter, priorityFilter, sort]);
 
   const { overdue, dueToday } = useMemo(() => triageBuckets(requests), [requests]);
+
+  async function handleAddItem() {
+  const name = newItemName.trim();
+  if (!name) return push("Item name required", "error");
+
+  setAddingItem(true);
+  try {
+    const resp = await postToSheet({ action: "addItem", name });
+    if (resp?.ok===false) throw new Error(resp.error || "Add failed");
+
+    // appscript returns { ok: true, item: { id, name } }
+    const added = resp.item;
+    const next = [...items, added].sort((a,b) => (a.name||"").localeCompare(b.name||""));
+    setItems(next);
+    localStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify(next));
+
+    setFormItem(added.name); // auto-select new item
+    setNewItemName("");
+    setAddItemOpen(false);
+    push("Item added", "success");
+  } catch {
+    push("Failed to add item", "error");
+  } finally {
+    setAddingItem(false);
+  }
+}
+
 
   async function refreshFromSheet() {
     setLoadingRefresh(true);
@@ -446,6 +612,7 @@ export default function PrintInboxHub() {
     if ("priority" in changes) fields.priority = changes.priority;
     if ("status" in changes) fields.status = changes.status;
     if ("devNotes" in changes) fields.devNotes = changes.devNotes;
+    if ("quantity" in changes) fields.quantity = changes.quantity;
 
     // If nothing relevant changed, don't hit the API
     if (Object.keys(fields).length === 0) return;
@@ -466,7 +633,7 @@ export default function PrintInboxHub() {
   async function onSubmit(e) {
     e.preventDefault();
     if (!formName.trim()) return push("Name is required", "error");
-    if (!formDesc.trim()) return push("Description is required", "error");
+    if (!formItem.trim()) return push("Item is required", "error");
 
     setLoadingSubmit(true);
 
@@ -474,7 +641,8 @@ export default function PrintInboxHub() {
       id: uuid(),
       createdAt: new Date().toISOString(),
       name: formName.trim(),
-      description: formDesc.trim(),
+      item: formItem.trim(),
+      quantity: Number(formQuantity) || 1,
       dueDate: formDue ? new Date(formDue).toISOString() : "",
       priority: formPriority,
       status: "New",
@@ -483,8 +651,9 @@ export default function PrintInboxHub() {
 
     // optimistic add
     setRequests((prev) => [newReq, ...prev]);
-    setFormDesc("");
+    setFormItem("");
     setFormDue("");
+    setFormQuantity(1);
     push("Request added", "success");
 
     try {
@@ -537,7 +706,7 @@ export default function PrintInboxHub() {
       `Priority: ${req.priority}`,
       `Status: ${req.status}`,
       `Due: ${req.dueDate ? formatDate(req.dueDate) : "No due date"}`,
-      `Description: ${req.description}`,
+      `Item: ${req.item || "-"}`,
       `Dev Notes: ${req.devNotes || "-"}`,
     ].join("\n");
 
@@ -569,11 +738,12 @@ export default function PrintInboxHub() {
             setSelected(req);
           }
         }}
-        className={`group rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md focus:ring-2 focus:ring-indigo-200 transition cursor-pointer ${
+        className={`group rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md focus:ring-2 focus:ring-indigo-200 transition cursor-pointer dark:border-slate-800 dark:bg-slate-900/60 ${
           isDone ? "opacity-80" : ""
         }`}
       >
         <div className="flex items-start gap-3 p-3 md:p-4">
+          <div className="flex flex-col gap-2">
           <span
             className={`text-xs px-2 py-1 rounded-full font-semibold ${
               priorityStyles[req.priority] || priorityStyles.Normal
@@ -582,18 +752,28 @@ export default function PrintInboxHub() {
             {req.priority}
           </span>
 
+          <span className="text-xs px-2 py-1 rounded-full border border-slate-200 dark:border-slate-800">
+            Qty: {req.quantity || 1}
+         </span>
+         </div>
+
+
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className={`font-semibold text-slate-800 truncate ${isDone ? "line-through" : ""}`}>
+              <p
+                className={`font-semibold text-slate-800 dark:text-slate-100 truncate ${
+                  isDone ? "line-through" : ""
+                }`}
+              >
                 {req.name}
               </p>
             </div>
 
-            <p className="text-sm text-slate-600 line-clamp-2">{req.description}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2">{req.item || "-"} </p>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
               <span className="inline-flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-slate-300" />
+                <span className="h-2 w-2 rounded-full bg-slate-300 dark:bg-slate-600" />
                 {formatDate(req.dueDate)}
               </span>
 
@@ -613,7 +793,7 @@ export default function PrintInboxHub() {
                     e.stopPropagation();
                     updateRequest(req.id, { status: a.next });
                   }}
-                  className="text-xs px-2 py-1 rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-95"
+                  className="text-xs px-2 py-1 rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-95 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   {a.label}
                 </button>
@@ -643,25 +823,25 @@ export default function PrintInboxHub() {
     }));
 
     return (
-      <div className="bg-white/80 backdrop-blur border border-slate-200 rounded-2xl shadow-sm p-4 space-y-3">
+      <div className="bg-white/80 backdrop-blur border border-slate-200 rounded-2xl shadow-sm p-4 space-y-3 dark:bg-slate-900/60 dark:border-slate-800">
         <div className="flex items-center justify-between">
-          <h4 className="font-semibold text-slate-800">Stats</h4>
-          <span className="text-xs text-slate-500">{requests.length} total</span>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100">Stats</h4>
+          <span className="text-xs text-slate-500 dark:text-slate-400">{requests.length} total</span>
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-sm">
           {counts.map((c) => (
             <div
               key={c.status}
-              className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2"
+              className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 dark:border-slate-800"
             >
-              <span className="text-slate-600">{c.status}</span>
-              <span className="font-semibold text-slate-900">{c.count}</span>
+              <span className="text-slate-600 dark:text-slate-300">{c.status}</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{c.count}</span>
             </div>
           ))}
         </div>
 
-        <div className="text-xs text-slate-500">
+        <div className="text-xs text-slate-500 dark:text-slate-400">
           {dueToday.length} due today / {overdue.length} overdue
         </div>
       </div>
@@ -677,7 +857,7 @@ export default function PrintInboxHub() {
         <div className="px-3 py-2 rounded-xl border border-rose-100 bg-rose-50 text-rose-800">
           Overdue: {overdue.length}
         </div>
-        <div className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700">
+        <div className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200">
           Total: {filtered.length}
         </div>
       </div>
@@ -685,34 +865,35 @@ export default function PrintInboxHub() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 text-slate-900">
-      <header className="sticky top-0 z-20 backdrop-blur border-b border-slate-200 bg-white/80">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold">3D Print Inbox</h1>
+<div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-indigo-50 text-slate-900
+                dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 dark:text-slate-100">
+      <header className="sticky top-0 z-20 backdrop-blur border-b border-slate-200 bg-white/80 dark:border-slate-800 dark:bg-slate-950/80">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-center md:justify-between gap-3">
+          <h1 className="hidden md:block text-xl font-semibold">PrintUI</h1>
 
           <div className="flex items-center gap-2">
             <button
               onClick={refreshFromSheet}
-              className="px-3 py-2 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 active:scale-95"
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 active:scale-95 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-900"
             >
               {loadingRefresh ? "Refreshing..." : "Refresh"}
             </button>
 
             <button
               onClick={() => setFormOpenMobile(true)}
-              className="md:hidden px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-700 text-sm active:scale-95"
+              className="md:hidden px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-700 text-sm active:scale-95 dark:bg-slate-950 dark:border-slate-800 dark:text-indigo-300"
             >
               New Request
             </button>
-            <button 
-              type = "button"
+
+            <button
+              type="button"
               onClick={toggleTheme}
-              className="px-3 py-2 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 active:scale-95
-                        dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
-              title= "Toggle dark mode"
-              >
-              {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
-             </button>
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm hover:bg-slate-50 active:scale-95 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-900"
+              title="Toggle dark mode"
+            >
+              {theme === "dark" ? "☀️" : "🌙"}
+            </button>
           </div>
         </div>
       </header>
@@ -720,30 +901,43 @@ export default function PrintInboxHub() {
       <main className="mx-auto max-w-6xl px-4 py-6 flex flex-col md:flex-row gap-6">
         <aside className="md:w-80 space-y-4 hidden md:block">
           <FormCard
-            name={formName}
-            setName={setFormName}
-            desc={formDesc}
-            setDesc={setFormDesc}
-            due={formDue}
-            setDue={setFormDue}
-            priority={formPriority}
-            setPriority={setFormPriority}
-            onSubmit={onSubmit}
-            loading={loadingSubmit}
-          />
+  name={formName}
+  setName={setFormName}
+  item={formItem}
+  setItem={setFormItem}
+
+  items={items}
+  loadingItems={loadingItems}
+
+  addItemOpen={addItemOpen}
+  setAddItemOpen={setAddItemOpen}
+  newItemName={newItemName}
+  setNewItemName={setNewItemName}
+  addingItem={addingItem}
+  handleAddItem={handleAddItem}
+
+  due={formDue}
+  setDue={setFormDue}
+  priority={formPriority}
+  setPriority={setFormPriority}
+  quantity={formQuantity}
+  setQuantity={setFormQuantity}
+  onSubmit={onSubmit}
+  loading={loadingSubmit}
+/>
           <StatsCard />
         </aside>
 
         <section className="flex-1 space-y-4">
-          <div className="bg-white/80 backdrop-blur border border-slate-200 rounded-2xl shadow-sm p-4 space-y-3">
+          <div className="bg-white/80 backdrop-blur border border-slate-200 rounded-2xl shadow-sm p-4 space-y-3 dark:bg-slate-900/60 dark:border-slate-800">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="flex-1 flex items-center gap-2">
                 <input
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search name or description..."
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+                  placeholder="Search"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 dark:placeholder:text-slate-400"
                 />
               </div>
 
@@ -751,7 +945,7 @@ export default function PrintInboxHub() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+                  className="rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
                 >
                   {["All", ...statuses].map((s) => (
                     <option key={s}>{s}</option>
@@ -761,7 +955,7 @@ export default function PrintInboxHub() {
                 <select
                   value={priorityFilter}
                   onChange={(e) => setPriorityFilter(e.target.value)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+                  className="rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
                 >
                   {["All", ...priorities].map((p) => (
                     <option key={p}>{p}</option>
@@ -771,7 +965,7 @@ export default function PrintInboxHub() {
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200"
+                  className="rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-200 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
                 >
                   {sortOptions.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -787,8 +981,8 @@ export default function PrintInboxHub() {
 
           <div className="space-y-3">
             {filtered.length === 0 ? (
-              <div className="text-center py-12 rounded-2xl border border-dashed border-slate-200 bg-white/70">
-                <p className="text-sm text-slate-500">No requests yet.</p>
+              <div className="text-center py-12 rounded-2xl border border-dashed border-slate-200 bg-white/70 dark:border-slate-800 dark:bg-slate-900/40">
+                <p className="text-sm text-slate-500 dark:text-slate-400">No requests yet.</p>
               </div>
             ) : (
               filtered.map(renderRequestCard)
@@ -811,30 +1005,45 @@ export default function PrintInboxHub() {
             className="flex-1 bg-slate-900/30 backdrop-blur-sm"
             onClick={() => setFormOpenMobile(false)}
           />
-          <div className="w-full bg-white rounded-t-2xl p-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+          <div className="w-full bg-white rounded-t-2xl p-4 shadow-2xl max-h-[85vh] overflow-y-auto dark:bg-slate-950 dark:border-slate-800">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold">New Request</h3>
+              <h3 className="text-lg font-semibold dark:text-slate-100">New Request</h3>
               <button
                 onClick={() => setFormOpenMobile(false)}
-                className="text-slate-500 hover:text-slate-800"
+                className="text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white"
               >
                 Close
               </button>
             </div>
 
             <FormCard
-              compact
-              name={formName}
-              setName={setFormName}
-              desc={formDesc}
-              setDesc={setFormDesc}
-              due={formDue}
-              setDue={setFormDue}
-              priority={formPriority}
-              setPriority={setFormPriority}
-              onSubmit={onSubmit}
-              loading={loadingSubmit}
-            />
+  compact
+  name={formName}
+  setName={setFormName}
+
+  item={formItem}
+  setItem={setFormItem}
+  items={items}
+  loadingItems={loadingItems}
+
+  addItemOpen={addItemOpen}
+  setAddItemOpen={setAddItemOpen}
+  newItemName={newItemName}
+  setNewItemName={setNewItemName}
+  addingItem={addingItem}
+  handleAddItem={handleAddItem}
+
+  due={formDue}
+  setDue={setFormDue}
+  priority={formPriority}
+  setPriority={setFormPriority}
+  quantity={formQuantity}
+  setQuantity={setFormQuantity}
+
+  onSubmit={onSubmit}
+  loading={loadingSubmit}
+/>
+
           </div>
         </div>
       )}
@@ -864,15 +1073,12 @@ export default function PrintInboxHub() {
                 ? "bg-rose-50 border-rose-100 text-rose-700"
                 : t.tone === "success"
                 ? "bg-emerald-50 border-emerald-100 text-emerald-700"
-                : "bg-white border-slate-200 text-slate-800"
+                : "bg-white border-slate-200 text-slate-800 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"
             }`}
           >
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm">{t.message}</span>
-              <button
-                onClick={() => remove(t.id)}
-                className="text-xs text-slate-500 hover:text-slate-800"
-              >
+              <button onClick={() => remove(t.id)} className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white">
                 X
               </button>
             </div>

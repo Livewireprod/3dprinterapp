@@ -1,4 +1,5 @@
-const SHEET_NAME = "Sheet1"; // <-- change to your tab name
+const SHEET_NAME = "Sheet1"; // Requests sheet
+const ITEMS_SHEET_NAME = "Items"; // Items lookup sheet
 
 // ---------- helpers ----------
 function jsonOut(obj) {
@@ -16,16 +17,15 @@ function safeParseBody(e) {
   let body;
   try {
     body = JSON.parse(raw);
-  } catch (err) {
+  } catch {
     return { ok: false, error: "Invalid JSON body", raw };
   }
 
-  // Handle double-encoded JSON string: "\"{...}\""
   if (typeof body === "string") {
     try {
       body = JSON.parse(body);
-    } catch (err) {
-      return { ok: false, error: "Invalid nested JSON body", raw, nested: body };
+    } catch {
+      return { ok: false, error: "Invalid nested JSON body", raw };
     }
   }
 
@@ -37,9 +37,14 @@ function safeParseBody(e) {
 }
 
 function getSheet_() {
-  const ss = SpreadsheetApp.getActive();
-  const sh = ss.getSheetByName(SHEET_NAME);
+  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
   if (!sh) throw new Error(`Sheet "${SHEET_NAME}" not found`);
+  return sh;
+}
+
+function getItemsSheet_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName(ITEMS_SHEET_NAME);
+  if (!sh) throw new Error(`Sheet "${ITEMS_SHEET_NAME}" not found`);
   return sh;
 }
 
@@ -59,37 +64,33 @@ function findHeaderIndex_(headers, wanted) {
 
 function findRowById_(sh, headers, id) {
   const idIndex = findHeaderIndex_(headers, "id");
-  if (idIndex === -1) throw new Error('Missing "id" header in row 1');
+  if (idIndex === -1) throw new Error('Missing "id" header');
 
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) return -1;
-
-  const idCol = idIndex + 1; // 1-based
-  const ids = sh.getRange(2, idCol, lastRow - 1, 1).getValues();
+  const ids = sh
+    .getRange(2, idIndex + 1, sh.getLastRow() - 1, 1)
+    .getValues();
 
   for (let i = 0; i < ids.length; i++) {
     if (String(ids[i][0]).trim() === String(id).trim()) {
-      return i + 2; // sheet row number
+      return i + 2;
     }
   }
   return -1;
 }
 
 // ---------- GET: return all requests ----------
-function doGet(e) {
+function doGet() {
   const sh = getSheet_();
   const headers = getHeaders_(sh);
 
-  const lastRow = sh.getLastRow();
-  const lastCol = sh.getLastColumn();
-  if (lastRow < 2) return jsonOut({ ok: true, rows: [] });
+  if (sh.getLastRow() < 2) return jsonOut({ ok: true, rows: [] });
 
-  const values = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const values = sh
+    .getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn())
+    .getValues();
 
   const rows = values
-    // drop totally empty rows
-    .filter((r) => r.some((cell) => String(cell).trim() !== ""))
-    // map to objects by header
+    .filter((r) => r.some((c) => String(c).trim() !== ""))
     .map((r) => {
       const obj = {};
       headers.forEach((h, i) => (obj[h] = r[i] ?? ""));
@@ -99,86 +100,86 @@ function doGet(e) {
   return jsonOut({ ok: true, rows });
 }
 
-// ---------- POST: add / delete / update ----------
+// ---------- POST ----------
 function doPost(e) {
-  const sh = getSheet_();
   const parsed = safeParseBody(e);
   if (!parsed.ok) return jsonOut(parsed);
 
   const body = parsed.body;
-  const action = String(body.action || "").toLowerCase().trim();
+  const action = String(body.action || "").toLowerCase();
 
+  // ===== ITEMS =====
+
+  if (action === "getitems") {
+    const sh = getItemsSheet_();
+    const rows = sh.getDataRange().getValues().slice(1);
+    return jsonOut({
+      ok: true,
+      items: rows.map(([id, name]) => ({ id, name })),
+    });
+  }
+
+  if (action === "additem") {
+    const name = String(body.name || "").trim();
+    if (!name) return jsonOut({ ok: false, error: "Missing item name" });
+
+    const sh = getItemsSheet_();
+    const id = sh.getLastRow();
+    sh.appendRow([id, name]);
+
+    return jsonOut({ ok: true, item: { id, name } });
+  }
+
+  // ===== REQUESTS =====
+
+  const sh = getSheet_();
   const headers = getHeaders_(sh);
 
   // ----- DELETE -----
-  // Payload: { action: "delete", id: "..." }
   if (action === "delete") {
     const id = String(body.id || "").trim();
-    if (!id) return jsonOut({ ok: false, error: "Missing id for delete" });
+    if (!id) return jsonOut({ ok: false, error: "Missing id" });
 
-    const idIndex = findHeaderIndex_(headers, "id");
-    if (idIndex === -1) throw new Error('Missing "id" header in row 1');
+    const row = findRowById_(sh, headers, id);
+    if (row !== -1) sh.deleteRow(row);
 
-    const idCol = idIndex + 1;
-    const lastRow = sh.getLastRow();
-    if (lastRow < 2) return jsonOut({ ok: true, deleted: 0 });
-
-    const ids = sh.getRange(2, idCol, lastRow - 1, 1).getValues();
-
-    let deleted = 0;
-    // delete bottom-up to avoid row shift issues
-    for (let i = ids.length - 1; i >= 0; i--) {
-      if (String(ids[i][0]).trim() === id) {
-        sh.deleteRow(i + 2);
-        deleted++;
-      }
-    }
-
-    return jsonOut({ ok: true, deleted });
+    return jsonOut({ ok: true });
   }
 
   // ----- UPDATE -----
-  // Payload: { action: "update", id: "...", fields: { priority, status, devNotes } }
   if (action === "update") {
     const id = String(body.id || "").trim();
-    const fields =
-      body.fields && typeof body.fields === "object" ? body.fields : null;
+    const fields = body.fields || {};
 
-    if (!id) return jsonOut({ ok: false, error: "Missing id for update" });
-    if (!fields) return jsonOut({ ok: false, error: "Missing fields object" });
+    if (!id) return jsonOut({ ok: false, error: "Missing id" });
 
-    const rowNumber = findRowById_(sh, headers, id);
-    if (rowNumber === -1)
-      return jsonOut({ ok: false, error: "ID not found", id });
+    const row = findRowById_(sh, headers, id);
+    if (row === -1) return jsonOut({ ok: false, error: "ID not found" });
 
-    const allowed = ["priority", "status", "devNotes"];
+    const allowed = ["priority", "status", "devNotes", "quantity", "item"];
     const updated = {};
 
-    for (const key of allowed) {
-      if (Object.prototype.hasOwnProperty.call(fields, key)) {
-        const colIndex = findHeaderIndex_(headers, key);
-        if (colIndex !== -1) {
-          sh.getRange(rowNumber, colIndex + 1).setValue(fields[key]);
+    allowed.forEach((key) => {
+      if (key in fields) {
+        const col = findHeaderIndex_(headers, key);
+        if (col !== -1) {
+          sh.getRange(row, col + 1).setValue(fields[key]);
           updated[key] = fields[key];
         }
       }
-    }
+    });
 
     return jsonOut({ ok: true, updated });
   }
 
   // ----- ADD (default) -----
-  // Prevent junk appends forever
-  const name = String(body.name || "").trim();
-  const description = String(body.description || "").trim();
-  if (!name || !description) {
+  if (!body.name || !body.item) {
     return jsonOut({
       ok: false,
-      error: "Missing required fields: name and description",
+      error: "Missing required fields: name and item",
     });
   }
 
-  // Append based on header names
   const row = headers.map((h) => (body[h] != null ? body[h] : ""));
   sh.appendRow(row);
 
