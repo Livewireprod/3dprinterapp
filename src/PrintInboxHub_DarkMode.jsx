@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { logout } from "./auth";
 
 const SHEETS_ENDPOINT = "https://cors-proxy.alfieharriswork.workers.dev/"; // <- Cloudflare Worker URL
 
@@ -864,6 +865,7 @@ export default function PrintInboxHub() {
     );
   }
 
+  //header
   return (
 <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-indigo-50 text-slate-900
                 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 dark:text-slate-100">
@@ -894,6 +896,12 @@ export default function PrintInboxHub() {
             >
               {theme === "dark" ? "☀️" : "🌙"}
             </button>
+
+            <button
+              onClick={() => {logout(); location.hash = "#login"; }}
+              >
+                Log out
+              </button>
           </div>
         </div>
       </header>
